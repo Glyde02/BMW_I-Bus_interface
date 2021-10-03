@@ -19,7 +19,7 @@ ____
 In BMW, the tire is used to establish communication between safety equipment, for engine control or
 for entertainment devices (the famous IBus).
 
-![Alt-текст](https://ibb.co/BwTRXR6 "I-Bus")
+![Alt-текст](https://i.ibb.co/GFCjKjM/ibus.jpg "I-Bus")
 The I-Bus is a single wire bus. That means it uses only one wire to send and receive data.
 In the car you can find the I-BUS wire at the CD changer connector in the rear, the Navigation system CD-ROM
 unit connector, the phone connector in the center console, etc.
