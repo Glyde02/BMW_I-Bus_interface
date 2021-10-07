@@ -26,4 +26,15 @@ In the car you can find the I-BUS wire at the CD changer connector in the rear, 
 unit connector, the phone connector in the center console, etc.
 ____
 
+# Сircuit board
+
+For communication, a printed circuit on two transistors was assembled. The scheme does not allow you to physically solve the problem with collisions. This should be done programmatically. However, the stability of the work is low. Therefore, it is better to use this scheme only for reading data from the bus.
+
+The components of the printed circuit board are shown in the picture.
+
+![Circuit](https://i.ibb.co/SVHnbNq/f44028328238.png "Curcuit")
+
+For correct operation, a circuit based on the TH3122.4 chip will be assembled.
+____
+
 # To be continued.
