@@ -17,8 +17,8 @@
 using namespace std;
 
 
-#define WND_HEIGHT 1700
-#define WND_WIDTH 1025
+#define WND_HEIGHT 500
+#define WND_WIDTH 600
 
 #define BUT_1 1000
 #define BUT_2 1001
@@ -37,15 +37,30 @@ using namespace std;
 
 HMENU hMenu;
 HANDLE hSerial;
+DCB dcbSerialParams = { 0 };
 
-LPCTSTR sPortName = L"COM1";
+
+
+//
+DWORD dwSize;
+DWORD dwBytesWritten;
+BOOL iRet;
+DWORD Data[255];
+HWND hEdit;
+
+DWORD from;
+DWORD length;
+DWORD to;
+DWORD data;
+DWORD chkSumm;
+//
+
+LPCTSTR sPortName = L"COM7";
 
 
 //Не нужно---------------------------
 OPENFILENAME ofn;       // структура станд. блока диалога
 char szFile[260];       // буфер для имени файла
-HANDLE hf;              // дескриптор файла
-char FileExtension[][6] = { ".jpg", ".bmp", ".jpg", ".jp2", ".png", ".tif" };
 //-----------------------------------
 
 
@@ -54,33 +69,121 @@ void MainMenu(HWND hWnd);
 
 
 
-//original - MainImage
-//current - CurrImage
-//new - BuffImage
-
-
-void ReadCOM()
+void ConnectRequest()
 {
-	DWORD iSize;
-	//char sReceivedChar;
-	
-	TCHAR* receivedMessage = { 0 };
 
+}
+
+//void SerialRead()
+//{
+//	unsigned long BytesIterated = 0;
+//
+//	if (ReadFile(hSerial, Buffer, 5, &BytesIterated, NULL)) {
+//		//SetWindowTextA(hEdit, Buffer);
+//	}
+//}
+
+void StrToHex()
+{
+	
+}
+
+char* unsigned_to_hex_string(unsigned x, char* dest, size_t size) {
+	snprintf(dest, size, "%X", x);
+	return dest;
+}
+
+DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
+{
 	while (true)
 	{
-		ReadFile(hSerial, receivedMessage, 1, &iSize, 0);  // получаем 1 байт
-		if (iSize > 0)   // если что-то принято, выводим
-			//cout << sReceivedChar;
-			MessageBox(NULL, receivedMessage, NULL, NULL);
+		const int READ_TIME = 100;
+		OVERLAPPED sync = { 0 };
+		int reuslt = 0;
+		unsigned long wait = 0, read = 0, state = 0;
+		string str;
+
+
+		/* Создаем объект синхронизации */
+		sync.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+		/* Устанавливаем маску на события порта */
+		if (SetCommMask(hSerial, EV_RXCHAR)) {
+			/* Связываем порт и объект синхронизации*/
+			WaitCommEvent(hSerial, &state, &sync);
+			/* Начинаем ожидание данных*/
+			wait = WaitForSingleObject(sync.hEvent, READ_TIME);
+			/* Данные получены */
+			if (wait == WAIT_OBJECT_0) {
+				/* Начинаем чтение данных */
+				char dst[255];
+
+
+
+				ReadFile(hSerial, &Data[0], 1, &read, &sync);
+				ReadFile(hSerial, &Data[1], 1, &read, &sync);
+				for (int i = 0; i < Data[1]; i++)
+				{
+					ReadFile(hSerial, &Data[i+2], 1, &read, &sync);
+				}
+				int len = Data[1] + 2;
+
+				char oneByte[1];
+				for (int i = 0; i < len; i++)
+				{					
+					unsigned_to_hex_string(Data[i], oneByte, (sizeof(unsigned) * CHAR_BIT + 3) / 4 + 1);
+					if (oneByte[1] == '\0')
+					{
+						dst[i * 2] = '0';
+						dst[i * 2 + 1] = oneByte[0];
+					}
+					else
+					{
+						dst[i * 2] = oneByte[0];
+						dst[i * 2 + 1] = oneByte[1];
+					}
+
+				}
+				dst[len * 2 ] = '\0';
+
+
+				//sprintf(dst, "%d", Data);
+				//std::string sourceStrByte = "e8";
+				//unsigned char result = (unsigned char)strtol(Buffer, NULL, 16);
+
+
+				//StrToHex();
+
+				//str = string(dst, sizeof(dst));
+				SetWindowTextA(hEdit, dst);
+
+
+
+				//MessageBoxA(NULL, &dst, NULL, NULL);
+				/* Ждем завершения операции чтения */
+				wait = WaitForSingleObject(sync.hEvent, READ_TIME);
+				/* Если все успешно завершено, узнаем какой объем данных прочитан */
+				if (wait == WAIT_OBJECT_0)
+					if (GetOverlappedResult(hSerial, &sync, &read, FALSE))
+						reuslt = read;
+			}
+		}
+		CloseHandle(sync.hEvent);
 	}
+	return 0;
+}
+
+int StringToWString(std::wstring& ws, const std::string& s)
+{
+	std::wstring wsTmp(s.begin(), s.end());
+
+	ws = wsTmp;
+
+	return 0;
 }
 
 LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	UINT code;
-	LPNMUPDOWN lpnmud;
-	int BufValue;
-	int bufGamma;
 	HDC hDc;
 	HFONT hfont;
 	PAINTSTRUCT ps;
@@ -95,15 +198,15 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			if (MessageBoxW(hWnd, L"Are you sure?", L"Exit", MB_YESNO) == IDYES)
 			{
 				DestroyWindow(hWnd);
-				DeleteFile(L"buf.bmp");
 			}
 			break;
 		case MENU_ABOUT:
-			MessageBoxW(NULL, L"   The program provides features for image processing.\n\
-The program was developed by a second-year student of POIT.\t\t\t\t\t\t Kondratskiy Anton Andreevich.", L"Info", MB_OK);
+			MessageBoxW(NULL, L"   The program provides features for communicate with i-bus protocol in BMW e38, e39, e53.\n\
+The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kondratskiy Anton.", L"Info", MB_OK);
 			break;
 		case BUT_1:
-			hSerial = CreateFile(sPortName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		{
+			hSerial = CreateFile(sPortName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, 0);
 			if (hSerial == INVALID_HANDLE_VALUE)
 			{
 				if (GetLastError() == ERROR_FILE_NOT_FOUND)
@@ -116,7 +219,7 @@ The program was developed by a second-year student of POIT.\t\t\t\t\t\t Kondrats
 				//cout << "some other error occurred.\n";
 			}
 
-			DCB dcbSerialParams = { 0 };
+			//dcbSerialParams = { 0 };
 			dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
 			if (!GetCommState(hSerial, &dcbSerialParams))
 			{
@@ -132,18 +235,101 @@ The program was developed by a second-year student of POIT.\t\t\t\t\t\t Kondrats
 				cout << "error setting serial port state\n";
 			}
 
-			char data[] = "I-Bus"; 
-			DWORD dwSize = sizeof(data);   
-			DWORD dwBytesWritten;   
+			COMMTIMEOUTS serialTimeouts;
+			serialTimeouts.ReadIntervalTimeout = 1;
+			serialTimeouts.ReadTotalTimeoutConstant = 1;
+			serialTimeouts.ReadTotalTimeoutMultiplier = 1;
+			serialTimeouts.WriteTotalTimeoutConstant = 1;
+			serialTimeouts.WriteTotalTimeoutMultiplier = 1;
 
-			BOOL iRet = WriteFile(hSerial, data, dwSize, &dwBytesWritten, NULL);
+			if (!SetCommTimeouts(hSerial, &serialTimeouts))
+			{
+				cout << "error Set timeouts\n";
+			}
 
-			ReadCOM();
+			//SerialRead();
+
+			char data[] = "I-Bus";
+			dwSize = sizeof(data);
+			dwBytesWritten;
+
+			//iRet = WriteFile(hSerial, data, dwSize, &dwBytesWritten, NULL);
+
+			//ReadCOM();
+
+			/*string str = ReadCOM();
+			wstring wstr;
+			StringToWString(wstr, str);
+
+			hDc = GetDC(hWnd);
+
+			TextOutW(hDc, 50, 20, wstr.c_str(), 25);
+			TextOut(hDc, 300, 20, L"BLUR", 4);*/
+
+			break; }
+
+		case BUT_2:
+		{
+			//DCB dcbSerialParams = { 0 };
+			/*dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+			if (!GetCommState(hSerial, &dcbSerialParams))
+			{
+				cout << "getting state error\n";
+			}
+			dcbSerialParams.BaudRate = CBR_9600;
+			dcbSerialParams.ByteSize = 8;
+			dcbSerialParams.StopBits = ONESTOPBIT;
+			dcbSerialParams.Parity = EVENPARITY;*/
+
+			/*if (!SetCommState(hSerial, &dcbSerialParams))
+			{
+				cout << "error setting serial port state\n";
+			}*/
+
+			char data2[] = "I-Bus";
+			dwSize = sizeof(data2);
+			dwBytesWritten;
+
+			iRet = WriteFile(hSerial, data2, dwSize, &dwBytesWritten, NULL);
+
+			//ReadCOM();
+
+			break; 
+		}
+		case BUT_3:
+		{
+			//DCB dcbSerialParams = { 0 };
+			/*dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+			if (!GetCommState(hSerial, &dcbSerialParams))
+			{
+				cout << "getting state error\n";
+			}
+			dcbSerialParams.BaudRate = CBR_9600;
+			dcbSerialParams.ByteSize = 8;
+			dcbSerialParams.StopBits = ONESTOPBIT;
+			dcbSerialParams.Parity = EVENPARITY;*/
+
+			/*if (!SetCommState(hSerial, &dcbSerialParams))
+			{
+				cout << "error setting serial port state\n";
+			}*/
+
+			HANDLE thread = CreateThread(NULL, 0, ReadCOM, NULL, 0, NULL);
+
+			//ReadCOM();
+
+			//char data2[] = "I-Bus";
+			//dwSize = sizeof(data2);
+			//dwBytesWritten;
+
+			//iRet = WriteFile(hSerial, data2, dwSize, &dwBytesWritten, NULL);
+
+			//ReadCOM();
 
 			break;
 		}
 
-
+		}	
 
 
 		break;
@@ -296,14 +482,18 @@ void SetControls(HWND hWnd)
 {
 
 
-	CreateWindowW(L"Button", L"button1", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 100, WND_WIDTH - 135, 200,
+	CreateWindowW(L"Button", L"button1", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 100, 100, 200,
 		50, hWnd, (HMENU)BUT_1, NULL, NULL);
 
-	CreateWindowW(L"button", L"button2", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 400, WND_WIDTH - 135, 200,
+	CreateWindowW(L"button", L"button2", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 100, 200, 200,
 		50, hWnd, (HMENU)BUT_2, NULL, NULL);
 
-	CreateWindowW(L"button", L"button3", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 650, WND_WIDTH - 135, 200,
+	CreateWindowW(L"button", L"button3", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 100, 300, 200,
 		50, hWnd, (HMENU)BUT_3, NULL, NULL);
+
+	hEdit = CreateWindowW(L"edit", L"Edit control", WS_VISIBLE | WS_CHILD | ES_CENTER, 5, 170, 120, 30, hWnd, NULL, NULL, NULL);
+
+
 
 
 }
