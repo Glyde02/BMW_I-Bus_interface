@@ -46,6 +46,7 @@ DWORD dwSize;
 DWORD dwBytesWritten;
 BOOL iRet;
 DWORD Data[255];
+char dataChar[255];
 HWND hEdit;
 
 DWORD from;
@@ -97,7 +98,7 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 {
 	while (true)
 	{
-		const int READ_TIME = 100;
+		const int READ_TIME = 1;
 		OVERLAPPED sync = { 0 };
 		int reuslt = 0;
 		unsigned long wait = 0, read = 0, state = 0;
@@ -116,7 +117,7 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 			/* Данные получены */
 			if (wait == WAIT_OBJECT_0) {
 				/* Начинаем чтение данных */
-				char dst[255];
+				char dst[255] = { 0 };
 
 
 
@@ -128,7 +129,7 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 				}
 				int len = Data[1] + 2;
 
-				char oneByte[1];
+				char oneByte[1] = { 0 };
 				for (int i = 0; i < len; i++)
 				{					
 					unsigned_to_hex_string(Data[i], oneByte, (sizeof(unsigned) * CHAR_BIT + 3) / 4 + 1);
@@ -144,7 +145,8 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 					}
 
 				}
-				dst[len * 2 ] = '\0';
+				dst[len * 2 ] = '\r';
+				dst[len * 2 + 2] = '\n';
 
 
 				//sprintf(dst, "%d", Data);
@@ -155,7 +157,15 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 				//StrToHex();
 
 				//str = string(dst, sizeof(dst));
-				SetWindowTextA(hEdit, dst);
+				strcat(dataChar, dst);
+				//strcat(dataChar, " ");
+				SetWindowTextA(hEdit, dataChar);
+
+				if (strlen(dataChar) > 400)
+				{
+					*dataChar = '\0';
+				}
+				
 
 
 
@@ -482,16 +492,16 @@ void SetControls(HWND hWnd)
 {
 
 
-	CreateWindowW(L"Button", L"button1", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 100, 100, 200,
+	CreateWindowW(L"Button", L"button1", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 100, 200,
 		50, hWnd, (HMENU)BUT_1, NULL, NULL);
 
-	CreateWindowW(L"button", L"button2", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 100, 200, 200,
+	CreateWindowW(L"button", L"button2", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 200, 200,
 		50, hWnd, (HMENU)BUT_2, NULL, NULL);
 
-	CreateWindowW(L"button", L"button3", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 100, 300, 200,
+	CreateWindowW(L"button", L"button3", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 300, 200,
 		50, hWnd, (HMENU)BUT_3, NULL, NULL);
 
-	hEdit = CreateWindowW(L"edit", L"Edit control", WS_VISIBLE | WS_CHILD | ES_CENTER, 5, 170, 120, 30, hWnd, NULL, NULL, NULL);
+	hEdit = CreateWindowW(L"Static", L"Edit control", WS_VISIBLE | WS_CHILD | SS_LEFT, 5, 5, 320, 520, hWnd, NULL, NULL, NULL);
 
 
 
