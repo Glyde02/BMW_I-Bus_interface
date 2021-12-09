@@ -16,9 +16,32 @@
 
 using namespace std;
 
+//Size of controls
+#define WND_HEIGHT 1500
+#define WND_WIDTH 850
+#define WND_BETWEEN 30
+#define WND_OUTER 290
+#define WND_INNER 380
+#define WND_FIELD_HEIGHT 700
 
-#define WND_HEIGHT 500
-#define WND_WIDTH 600
+#define COM_SETTINGS 18
+#define SCAN_COM 19
+#define COM1  20
+#define COM2  21
+#define COM3  22
+#define COM4  23
+#define COM5  24
+#define COM6  25
+#define COM7  26
+#define COM8  27
+#define COM9  28
+#define COM10 29
+#define CONNECT_COM 30
+
+#define SEND_EDIT 50
+
+
+
 
 #define BUT_1 1000
 #define BUT_2 1001
@@ -33,19 +56,33 @@ using namespace std;
 #define UP_MENU_SAVE 33
 
 
-#define MENU_ABOUT 30
+#define MENU_ABOUT 40
 
-HMENU hMenu;
+
 HANDLE hSerial;
 DCB dcbSerialParams = { 0 };
+HANDLE threadReadingCom;
 
 
+HANDLE hComSettings;
+HANDLE hCode;
+HANDLE hCodeInfo;
+HANDLE hCodePresets;
+
+HANDLE hComPorts;
+
+HANDLE hCom1, hCom2, hCom3, hCom4, hCom5, hCom6, hCom7, hCom8, hCom9, hCom10;
+BOOL ports[11] = { false };
+
+HANDLE hSendEdit;
+HANDLE hSendButton;
 
 //
+HMENU hMenu;
 DWORD dwSize;
 DWORD dwBytesWritten;
 BOOL iRet;
-DWORD Data[255];
+DWORD Data[512];
 char dataChar[255];
 HWND hEdit;
 
@@ -120,7 +157,7 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 				char dst[255] = { 0 };
 
 
-
+				
 				ReadFile(hSerial, &Data[0], 1, &read, &sync);
 				ReadFile(hSerial, &Data[1], 1, &read, &sync);
 				for (int i = 0; i < Data[1]; i++)
@@ -146,7 +183,7 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 
 				}
 				dst[len * 2 ] = '\r';
-				dst[len * 2 + 2] = '\n';
+				dst[len * 2 + 1] = '\n';
 
 
 				//sprintf(dst, "%d", Data);
@@ -159,9 +196,9 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 				//str = string(dst, sizeof(dst));
 				strcat(dataChar, dst);
 				//strcat(dataChar, " ");
-				SetWindowTextA(hEdit, dataChar);
+				SetWindowTextA((HWND)hCode, dataChar);
 
-				if (strlen(dataChar) > 400)
+				if (strlen(dataChar) > 30000)
 				{
 					*dataChar = '\0';
 				}
@@ -192,6 +229,132 @@ int StringToWString(std::wstring& ws, const std::string& s)
 	return 0;
 }
 
+void GetActivePorts()
+{
+	int r = 0;
+	HKEY hkey = NULL;
+	//Открываем раздел реестра, в котором хранится иинформация о COM портах
+	r = RegOpenKeyEx(HKEY_LOCAL_MACHINE, TEXT("HARDWARE\\DEVICEMAP\\SERIALCOMM\\"), 0, KEY_READ, &hkey);
+	if (r != ERROR_SUCCESS)
+		return;
+
+	unsigned long CountValues = 0, MaxValueNameLen = 0, MaxValueLen = 0;
+	//Получаем информацию об открытом разделе реестра
+	RegQueryInfoKey(hkey, NULL, NULL, NULL, NULL, NULL, NULL, &CountValues, &MaxValueNameLen, &MaxValueLen, NULL, NULL);
+	++MaxValueNameLen;
+	//Выделяем память
+	TCHAR* bufferName = NULL, * bufferData = NULL;
+	bufferName = (TCHAR*)malloc(MaxValueNameLen * sizeof(TCHAR));
+	if (!bufferName)
+	{
+		RegCloseKey(hkey);
+		return;
+	}
+	bufferData = (TCHAR*)malloc((MaxValueLen + 1) * sizeof(TCHAR));
+	if (!bufferData)
+	{
+		free(bufferName);
+		RegCloseKey(hkey);
+		return;
+	}
+
+	unsigned long NameLen, type, DataLen;
+	//Цикл перебора параметров раздела реестра
+	for (unsigned int i = 0; i < CountValues; i++)
+	{
+		NameLen = MaxValueNameLen;
+		DataLen = MaxValueLen;
+		r = RegEnumValue(hkey, i, bufferName, &NameLen, NULL, &type, (LPBYTE)bufferData, &DataLen);
+		if ((r != ERROR_SUCCESS) || (type != REG_SZ))
+			continue;
+
+		//int j = 0; 
+		//char s = bufferData[3];
+		ports[(int)(bufferData[3] - '0')] = TRUE;
+		
+	}
+	//Освобождаем память
+	free(bufferName);
+	free(bufferData);
+	//Закрываем раздел реестра
+	RegCloseKey(hkey);
+}
+
+void Connecting()
+{
+	hSerial = CreateFileW(sPortName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, 0);
+	if (hSerial == INVALID_HANDLE_VALUE)
+	{
+		if (GetLastError() == ERROR_FILE_NOT_FOUND)
+		{
+			MessageBox(NULL, L"no", NULL, NULL);
+			//cout << "serial port does not exist.\n";
+		}
+		MessageBox(NULL, L"no2", NULL, NULL);
+
+		//cout << "some other error occurred.\n";
+	}
+
+	dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+	if (!GetCommState(hSerial, &dcbSerialParams))
+	{
+		cout << "getting state error\n";
+	}
+	dcbSerialParams.BaudRate = CBR_9600;
+	dcbSerialParams.ByteSize = 8;
+	dcbSerialParams.StopBits = ONESTOPBIT;
+	dcbSerialParams.Parity = EVENPARITY;
+
+	if (!SetCommState(hSerial, &dcbSerialParams))
+	{
+		cout << "error setting serial port state\n";
+	}
+
+	COMMTIMEOUTS serialTimeouts;
+
+	serialTimeouts.ReadIntervalTimeout = 0xFFFFFFFF;
+	serialTimeouts.ReadTotalTimeoutConstant = 0;
+	serialTimeouts.ReadTotalTimeoutMultiplier = 0;
+
+	/*serialTimeouts.ReadIntervalTimeout = 5000;
+	serialTimeouts.ReadTotalTimeoutConstant = 5000;
+	serialTimeouts.ReadTotalTimeoutMultiplier = 1000;*/
+	serialTimeouts.WriteTotalTimeoutConstant = 5000;
+	serialTimeouts.WriteTotalTimeoutMultiplier = 1000;
+
+	if (!SetCommTimeouts(hSerial, &serialTimeouts))
+	{
+		cout << "error Set timeouts\n";
+	}
+
+}
+
+void EnableActivePorts()
+{
+	if (ports[0])
+		EnableWindow((HWND)hCom1, TRUE);
+	if (ports[1])
+		EnableWindow((HWND)hCom1, TRUE);
+	if (ports[2])
+		EnableWindow((HWND)hCom2, TRUE);
+	if (ports[3])
+		EnableWindow((HWND)hCom3, TRUE);
+	if (ports[4])
+		EnableWindow((HWND)hCom4, TRUE);
+	if (ports[5])
+		EnableWindow((HWND)hCom5, TRUE);
+	if (ports[6])
+		EnableWindow((HWND)hCom6, TRUE);
+	if (ports[7])
+		EnableWindow((HWND)hCom7, TRUE);
+	if (ports[8])
+		EnableWindow((HWND)hCom8, TRUE);
+	if (ports[9])
+		EnableWindow((HWND)hCom9, TRUE);
+	if (ports[10])
+		EnableWindow((HWND)hCom10, TRUE);
+}
+
 LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	HDC hDc;
@@ -201,10 +364,43 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 	switch (uMsg) {
 		
 	case WM_COMMAND:
+
 		switch (LOWORD(wParam)) {
 		
+		case SCAN_COM:
+			GetActivePorts();
+			EnableActivePorts();
+			break;
+		case CONNECT_COM:
+			if (IsDlgButtonChecked(hWnd, COM1))
+				sPortName = L"COM1";
+			if (IsDlgButtonChecked(hWnd, COM2))
+				sPortName = L"COM2";
+			if (IsDlgButtonChecked(hWnd, COM3))
+				sPortName = L"COM3";
+			if (IsDlgButtonChecked(hWnd, COM4))
+				sPortName = L"COM4";
+			if (IsDlgButtonChecked(hWnd, COM5))
+				sPortName = L"COM5";
+			if (IsDlgButtonChecked(hWnd, COM6))
+				sPortName = L"COM6";
+			if (IsDlgButtonChecked(hWnd, COM7))
+				sPortName = L"COM7";
+			if (IsDlgButtonChecked(hWnd, COM8))
+				sPortName = L"COM8";
+			if (IsDlgButtonChecked(hWnd, COM9))
+				sPortName = L"COM9";
+			if (IsDlgButtonChecked(hWnd, COM10))
+				sPortName = L"COM10";
+
+			Connecting();
+			threadReadingCom = CreateThread(NULL, 0, ReadCOM, NULL, 0, NULL);
+			break;
+
+
+
 		case MENU_EXIT:
-			MessageBeep(MB_OK);
+			//MessageBeep(MB_OK);
 			if (MessageBoxW(hWnd, L"Are you sure?", L"Exit", MB_YESNO) == IDYES)
 			{
 				DestroyWindow(hWnd);
@@ -296,11 +492,13 @@ The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kon
 				cout << "error setting serial port state\n";
 			}*/
 
-			char data2[] = "I-Bus";
-			dwSize = sizeof(data2);
-			dwBytesWritten;
+			//char data2[] = "I-Bus";
+			//dwSize = sizeof(data2);
+			//dwBytesWritten;
 
-			iRet = WriteFile(hSerial, data2, dwSize, &dwBytesWritten, NULL);
+			//iRet = WriteFile(hSerial, data2, dwSize, &dwBytesWritten, NULL);
+
+			GetActivePorts();
 
 			//ReadCOM();
 
@@ -324,7 +522,7 @@ The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kon
 				cout << "error setting serial port state\n";
 			}*/
 
-			HANDLE thread = CreateThread(NULL, 0, ReadCOM, NULL, 0, NULL);
+			
 
 			//ReadCOM();
 
@@ -366,7 +564,7 @@ The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kon
 	case WM_CLOSE:
 		DestroyWindow(hWnd);
 
-		MessageBeep(MB_OK);
+		//MessageBeep(MB_OK);
 		/*if (MessageBoxW(hWnd, L"Are you sure?", L"Exit", MB_YESNO) == IDYES)
 		{
 			DestroyWindow(hWnd);
@@ -381,7 +579,6 @@ The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kon
 	}
 	return 0;
 }
-
 
 
 INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, INT nCmdShow)
@@ -490,6 +687,61 @@ void MainMenu(HWND hWnd)
 // Create controls
 void SetControls(HWND hWnd)
 {
+	/*WNDCLASSEX wcex;
+	memset(&wcex, 0, sizeof(WNDCLASSEX));
+
+	wcex.cbSize = sizeof(WNDCLASSEX);
+	wcex.style = 0;
+	wcex.lpfnWndProc = WindowProcedure_Settings;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = 0;
+	wcex.hIcon = 0;
+	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	wcex.lpszMenuName = NULL;
+	wcex.lpszClassName = L"Settings";
+	wcex.hIconSm = 0;
+
+	RegisterClassEx(&wcex);
+	hComSettings = CreateWindowExW(0, L"WindowProcedure_Settings", L"I-Bus Checker",
+		WS_VISIBLE,
+		1 * WND_BETWEEN, 10, WND_OUTER, WND_FIELD_HEIGHT, 0, 0, NULL, NULL);*/
+
+
+	hComSettings = CreateWindowW(L"Static", L"", WS_CHILD | WS_VISIBLE | SS_GRAYRECT, 1*WND_BETWEEN,						   10, WND_OUTER, WND_FIELD_HEIGHT, 
+		hWnd, NULL, NULL, NULL);
+	hCode		 = CreateWindowW(L"Edit", L"", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_VSCROLL | WS_BORDER | ES_READONLY | EM_SETWORDBREAKPROC, 2*WND_BETWEEN + WND_OUTER,			   10, WND_INNER, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
+	hCodeInfo	 = CreateWindowW(L"Static", L"", WS_CHILD | WS_VISIBLE | SS_GRAYFRAME, 3*WND_BETWEEN + WND_OUTER + WND_INNER,   10, WND_INNER, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
+	hCodePresets = CreateWindowW(L"Static", L"", WS_CHILD | WS_VISIBLE | SS_GRAYRECT, 4*WND_BETWEEN + WND_OUTER + 2*WND_INNER, 10, WND_OUTER, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
+	
+	//SetWindowLongPtr((HWND)hComSettings, GWLP_WNDPROC | GWL_EXSTYLE, (LONG_PTR)BtnProc);
+
+	CreateWindowW(L"button", L"Scan...", WS_CHILD | WS_VISIBLE, 52, 22, 50, 20, (HWND)hWnd, (HMENU)SCAN_COM, NULL, NULL);
+	hComPorts = CreateWindowW(L"Button", L"Com ports:", WS_CHILD | WS_VISIBLE | BS_GROUPBOX , 50, 50, WND_OUTER - 40, 285, (HWND)hWnd, NULL, NULL, NULL);
+	hCom1 = CreateWindowW(L"button", L"Com 1", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 0 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM1, NULL, NULL);
+	hCom2 = CreateWindowW(L"button", L"Com 2", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 1 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM2, NULL, NULL);
+	hCom3 = CreateWindowW(L"button", L"Com 3", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 2 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM3, NULL, NULL);
+	hCom4 = CreateWindowW(L"button", L"Com 4", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 3 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM4, NULL, NULL);
+	hCom5 = CreateWindowW(L"button", L"Com 5", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 4 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM5, NULL, NULL);
+	hCom6 = CreateWindowW(L"button", L"Com 6", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 5 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM6, NULL, NULL);
+	hCom7 = CreateWindowW(L"button", L"Com 7", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 6 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM7, NULL, NULL);
+	hCom8 = CreateWindowW(L"button", L"Com 8", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 7 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM8, NULL, NULL);
+	hCom9 = CreateWindowW(L"button", L"Com 9", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 8 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM9, NULL, NULL);
+	hCom10 = CreateWindowW(L"button", L"Com 10", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON, 60, 80 + 9 * 25, WND_OUTER - 60, 20, (HWND)hWnd, (HMENU)COM10, NULL, NULL);
+	CreateWindowW(L"button", L"Connect to ...", WS_CHILD | WS_VISIBLE, 52, WND_FIELD_HEIGHT - 40, 100, 20, (HWND)hWnd, (HMENU)CONNECT_COM, NULL, NULL);
+
+	EnableWindow((HWND)hCom1, FALSE);
+	EnableWindow((HWND)hCom2, FALSE);
+	EnableWindow((HWND)hCom3, FALSE);
+	EnableWindow((HWND)hCom4, FALSE);
+	EnableWindow((HWND)hCom5, FALSE);
+	EnableWindow((HWND)hCom6, FALSE);
+	EnableWindow((HWND)hCom7, FALSE);
+	EnableWindow((HWND)hCom8, FALSE);
+	EnableWindow((HWND)hCom9, FALSE);
+	EnableWindow((HWND)hCom10, FALSE);
+
+	hSendEdit = CreateWindowW(L"Edit", L"EditControl", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_BORDER, 2 * WND_BETWEEN + WND_OUTER, 10 + WND_FIELD_HEIGHT + 20, (4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180)-(2 * WND_BETWEEN + WND_OUTER), 30, hWnd, NULL, NULL, NULL);
+	hSendButton = CreateWindowW(L"Button", L"Send command->", WS_CHILD | WS_VISIBLE | SS_LEFT, 4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180, 10 + WND_FIELD_HEIGHT + 20, 150, 30, hWnd, NULL, NULL, NULL);
 
 
 	CreateWindowW(L"Button", L"button1", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 100, 200,
@@ -501,7 +753,7 @@ void SetControls(HWND hWnd)
 	CreateWindowW(L"button", L"button3", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 300, 200,
 		50, hWnd, (HMENU)BUT_3, NULL, NULL);
 
-	hEdit = CreateWindowW(L"Static", L"Edit control", WS_VISIBLE | WS_CHILD | SS_LEFT, 5, 5, 320, 520, hWnd, NULL, NULL, NULL);
+	//hEdit = CreateWindowW(L"Static", L"Edit control", WS_VISIBLE | WS_CHILD | SS_LEFT, 5, 5, 320, 520, hWnd, NULL, NULL, NULL);
 
 
 
