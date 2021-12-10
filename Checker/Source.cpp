@@ -14,15 +14,11 @@
 #include <strsafe.h>
 #include "Codes.h"
 
-
-
-
-
 using namespace std;
 
 //Size of controls
-#define WND_HEIGHT 1500
-#define WND_WIDTH 850
+#define WND_HEIGHT 1600
+#define WND_WIDTH 830
 #define WND_BETWEEN 30
 #define WND_OUTER 290
 #define WND_INNER 380
@@ -47,13 +43,12 @@ using namespace std;
 #define SEND_EDIT 50
 #define SEND_BUT 51
 #define CODE_CLEAR 52
+#define PRESETS_INFO 53
 
 
 
-
-
-#define BUT_1 1000
-#define BUT_2 1001
+#define BUT_LOAD 1000
+#define BUT_CHECK 1001
 #define BUT_3 1002
 
 
@@ -74,6 +69,8 @@ HANDLE threadReadingCom;
 
 
 HANDLE hComSettings;
+HANDLE hStatusText;
+HANDLE hComText;
 HANDLE hCode;
 HANDLE hCodeInfo;
 HANDLE hCodePresets;
@@ -81,13 +78,15 @@ HANDLE hCodePresets;
 HANDLE hComPorts;
 HANDLE hComStopResume;
 bool isStop = FALSE;
+bool isCalcChkSum = FALSE;
 HANDLE hCodeClear;
 
 HANDLE hCom1, hCom2, hCom3, hCom4, hCom5, hCom6, hCom7, hCom8, hCom9, hCom10;
-BOOL ports[11] = { false };
+BOOL ports[10] = { false };
 
 HANDLE hSendEdit;
 HANDLE hSendButton;
+HANDLE hCheckSum;
 
 //
 HMENU hMenu;
@@ -95,23 +94,21 @@ DWORD dwSize;
 DWORD dwBytesWritten;
 BOOL iRet;
 DWORD Data[512];
-char dataChar[2000];
-int numOfLine = 0;
-char bufwr[255];
-char command[8];
+char dataChar[4096];
 
 int mailLength = 0;
 char mail[255];
 HWND hEdit;
 
-DWORD from;
-DWORD length;
-DWORD to;
-DWORD data;
+wchar_t statusText[255];
+DWORD odometr = 414041;
+char odometrChar[6] = { 0 };
 DWORD chkSumm;
 //
 
 LPCTSTR sPortName = L"COM7";
+
+char szFile[260]; //file name
 
 
 
@@ -145,8 +142,6 @@ char* unsigned_to_hex_string(unsigned x, char* dest, size_t size) {
 
 void PrintCode()
 {
-	
-
 	char CodesInfo[255] = { 0 };
 	strcat(CodesInfo, IBUSDevices[Data[0]]);
 	strcat(CodesInfo, " to ");
@@ -159,23 +154,24 @@ void PrintCode()
 	strcat(CodesInfo, "\r\n");
 
 
-	numOfLine += 7;
-
 	strcat(dataChar, CodesInfo);
 
-	//SetWindowTextA((HWND)hCode, dataChar);
-
 	int index = GetWindowTextLength((HWND)hCode);
+	if (index > 20000)
+	{
+		SetFocus((HWND)hCode); // set focus
+		SendMessageA((HWND)hCode, EM_SETSEL, 0, 10000);
+		SendMessageA((HWND)hCode, EM_REPLACESEL, 0, (LPARAM)"");
+		int index = GetWindowTextLength((HWND)hCode);
+	}
+
 	SetFocus((HWND)hCode); // set focus
-	SendMessageA((HWND)hCode, EM_SETSEL, (WPARAM)index, (LPARAM)index); // set selection - end of text
-	SendMessageA((HWND)hCode, EM_REPLACESEL, 0, (LPARAM)dataChar); // append!
+	SendMessageA((HWND)hCode, EM_SETSEL, (WPARAM)index, (LPARAM)index); 
+	SendMessageA((HWND)hCode, EM_REPLACESEL, 0, (LPARAM)dataChar);
 
-	*dataChar = '\0';
 
-	//SendMessageA((HWND)hCode, EM_SETSEL, 0, -1); //Select all. 
-	//SendMessageA((HWND)hCode, EM_SETSEL, -1, -1);//Unselect and stay at the end pos
-	//SendMessageA((HWND)hCode, EM_SCROLLCARET, 0, 0); //Set scrollcaret to the current Pos
-	//SendMessage((HWND)hCode, EM_LINESCROLL, 0, numOfLine);
+	memset(dataChar, 0, 512);
+
 	
 }
 
@@ -190,11 +186,63 @@ void WriteCOM()
 	int j = GetLastError();
 	signal = WaitForSingleObject(sync.hEvent, INFINITE); //приостановить поток, пока не завершится
 
-		if ((signal == WAIT_OBJECT_0) && (GetOverlappedResult(hSerial, &sync, &temp, true))) fl = true; //если
+	if ((signal == WAIT_OBJECT_0) && (GetOverlappedResult(hSerial, &sync, &temp, true))) fl = true; //если
 		else fl = false;
 
 	
 	CloseHandle(sync.hEvent); //перед выходом из потока закрыть объект-событие
+}
+
+void ShowOdometr()
+{
+
+	int i = 5;
+	int odo = odometr;
+
+	while (odo != 0)
+	{
+		int k = odo % 10;
+		odo = odo / 10;
+		odometrChar[i] = k + '0';
+		i--;
+	}
+
+	char outStr[255] = { 0 };
+	strcat(outStr, "ODOMETR: ");
+	strcat(outStr, odometrChar);
+	strcat(outStr, "km\r\n");
+
+
+	wchar_t text[255] = { 0 };
+	MultiByteToWideChar(0, 0, outStr, strlen(outStr), text, strlen(outStr));
+	wcscat_s(statusText, text);
+
+	SetWindowText((HWND)hStatusText, statusText);
+
+}
+
+void TryToParse()
+{
+	switch (Data[0]){
+	case 0x80:
+	{
+		switch (Data[2]) {
+		case 0xBF:
+
+			switch (Data[3]) {
+			case 0x17:
+				odometr = Data[6] * 65536 + Data[5] * 256 + Data[5];
+				ShowOdometr();
+				break;
+			}
+
+			break;
+		}
+	}
+		break;
+
+	}
+
 }
 
 DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
@@ -208,14 +256,12 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 		string str;
 
 
-		/* Создаем объект синхронизации */
 		sync.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-		/* Устанавливаем маску на события порта */
 		if (SetCommMask(hSerial, EV_RXCHAR)) {
 			/* Связываем порт и объект синхронизации*/
 			WaitCommEvent(hSerial, &state, &sync);
-			/* Начинаем ожидание данных*/
+
 			wait = WaitForSingleObject(sync.hEvent, READ_TIME);
 			/* Данные получены */
 			if (wait == WAIT_OBJECT_0) {
@@ -231,10 +277,11 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 					ReadFile(hSerial, &Data[i+2], 1, &read, &sync);
 				}
 				
+				TryToParse();
 				
 				int len = Data[1] + 2;
 
-				char oneByte[1] = { 0 };
+				char oneByte[2] = { 0 };
 				for (int i = 0; i < len; i++)
 				{
 					unsigned_to_hex_string(Data[i], oneByte, (sizeof(unsigned) * CHAR_BIT + 3) / 4 + 1);
@@ -250,29 +297,17 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 					}
 
 				}
+				
+					//0x17
+					//0x18
+					//0x19
+
 				dst[len * 2] = '\r';
 				dst[len * 2 + 1] = '\n';
 
 				strcat(dataChar, dst);
-
-
-				//sprintf(dst, "%d", Data);
-				//std::string sourceStrByte = "e8";
-				//unsigned char result = (unsigned char)strtol(Buffer, NULL, 16);
-
-
-				//StrToHex();
-
-				//str = string(dst, sizeof(dst));
-				
-				//strcat(dataChar, " ");
 				PrintCode();
 				
-
-				if (strlen(dataChar) > 30000)
-				{
-					*dataChar = '\0';
-				}
 				
 
 				//MessageBoxA(NULL, &dst, NULL, NULL);
@@ -296,6 +331,48 @@ int StringToWString(std::wstring& ws, const std::string& s)
 	ws = wsTmp;
 
 	return 0;
+}
+
+void ShowOpenDialog(HWND hWnd)
+{
+	OPENFILENAME ofn;
+
+	// Инициализируем OPENFILENAME
+	ZeroMemory(&ofn, sizeof(OPENFILENAME));
+	ofn.lStructSize = sizeof(OPENFILENAME);
+	ofn.hwndOwner = hWnd;
+	ofn.lpstrFile = (LPWSTR)szFile;
+	ofn.nMaxFile = sizeof(szFile);
+	ofn.lpstrFilter = (LPWSTR)L"Text file (*.txt)\0*.txt\0\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFileTitle = NULL;
+	ofn.nMaxFileTitle = 0;
+	ofn.lpstrInitialDir = NULL;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	if (GetOpenFileName(&ofn) == TRUE)
+	{
+
+		DWORD dwSize = 0;
+		char text[1000] = { 0 };
+		OVERLAPPED sync = { 0 };
+		unsigned long read = 0;
+
+
+
+		HANDLE hFile = CreateFile(ofn.lpstrFile, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile != INVALID_HANDLE_VALUE)
+		{
+			ReadFile(hFile, text, 999, &read, &sync);
+		}
+		CloseHandle(hFile);
+
+		wchar_t filename[4096] = { 0 };
+		MultiByteToWideChar(0, 0, text, strlen(text), filename, strlen(text));
+
+		SetWindowText((HWND)hCodePresets, filename);
+	}
+
 }
 
 void GetActivePorts()
@@ -367,7 +444,8 @@ void Connecting()
 	dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
 	if (!GetCommState(hSerial, &dcbSerialParams))
 	{
-		cout << "getting state error\n";
+		cout << "getting state error\n"; 
+		MessageBox(NULL, L"no2", NULL, NULL);
 	}
 	dcbSerialParams.BaudRate = CBR_9600;
 	dcbSerialParams.ByteSize = 8;
@@ -378,6 +456,7 @@ void Connecting()
 	if (!SetCommState(hSerial, &dcbSerialParams))
 	{
 		cout << "error setting serial port state\n";
+		MessageBox(NULL, L"no2", NULL, NULL);
 	}
 
 	COMMTIMEOUTS serialTimeouts;
@@ -395,6 +474,7 @@ void Connecting()
 	if (!SetCommTimeouts(hSerial, &serialTimeouts))
 	{
 		cout << "error Set timeouts\n";
+		MessageBox(NULL, L"no2", NULL, NULL);
 	}
 
 }
@@ -436,7 +516,7 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 	case WM_COMMAND:
 
 		switch (LOWORD(wParam)) {
-		
+
 		case SCAN_COM:
 			GetActivePorts();
 			EnableActivePorts();
@@ -466,7 +546,7 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			Connecting();
 			threadReadingCom = CreateThread(NULL, 0, ReadCOM, NULL, 0, NULL);
 			break;
-		
+
 		case COM_STOPRESUME:
 			if (!isStop)
 			{
@@ -486,46 +566,48 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			//get Mail
 			int len = SendMessage((HWND)hSendEdit, WM_GETTEXTLENGTH, 0, 0);
 			mailLength = len / 2;
-			char* buffer = new char[len*2];
-			SendMessage((HWND)hSendEdit, WM_GETTEXT, len*2, (LPARAM)buffer);
+			char* buffer = new char[len * 2];
+			SendMessage((HWND)hSendEdit, WM_GETTEXT, len * 2, (LPARAM)buffer);
 
 			char bufferHex[255] = { 0 };
 
 			int currPos = 0;
-			for (int i = 0; i < len ; i++)
+			for (int i = 0; i < len; i++)
 			{
 				if (*(buffer + i * 2) != ' ') {
 					bufferHex[currPos] = *(buffer + i * 2);
 					currPos++;
 				}
-					
+
 			}
 
 			mailLength = currPos / 2;
 
-			for (int i = 0; i < mailLength ; i++)
+			for (int i = 0; i < mailLength; i++)
 			{
 				char strByte[2];
-				strByte[0] = bufferHex[i*2];
+				strByte[0] = bufferHex[i * 2];
 
 
-				strByte[1] = bufferHex[i*2+1];
+				strByte[1] = bufferHex[i * 2 + 1];
 
 
 				int g = (int)strtol(strByte, NULL, 16);
 
 				mail[i] = char(g);
-				
+
 			}
 
-			BYTE chkSum = 0x00;
-			for (int i = 0; i < mailLength ; i++)
+			if (isCalcChkSum)
 			{
-				chkSum = chkSum ^ mail[i];
+				BYTE chkSum = 0x00;
+				for (int i = 0; i < mailLength; i++)
+				{
+					chkSum = chkSum ^ mail[i];
+				}
+				mailLength++;
+				mail[mailLength - 1] = char(chkSum);
 			}
-			mailLength++;
-			mail[mailLength-1] = char(chkSum);
-
 
 			SuspendThread(threadReadingCom);
 
@@ -534,23 +616,25 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
 			ResumeThread(threadReadingCom);
 		}
-			break; 
-
-
-		case MENU_EXIT:
-			//MessageBeep(MB_OK);
-			if (MessageBoxW(hWnd, L"Are you sure?", L"Exit", MB_YESNO) == IDYES)
-			{
-				DestroyWindow(hWnd);
-			}
-			break;
-		case MENU_ABOUT:
-			MessageBoxW(NULL, L"   The program provides features for communicate with i-bus protocol in BMW e38, e39, e53.\n\
-The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kondratskiy Anton.", L"Info", MB_OK);
-			break;
-		}	
-
-
+		break;
+		case BUT_LOAD:
+		{
+			ShowOpenDialog(hWnd);
+		}
+		break;
+		case BUT_CHECK:
+		{
+			LRESULT res = SendMessage((HWND)hCheckSum, BM_GETCHECK, 0, 0);
+			if (res == BST_CHECKED)
+				isCalcChkSum = TRUE;
+			else
+				isCalcChkSum = FALSE;
+		}
+		break;
+		/*case BUT_3:
+			ShowOdometr();
+			break;*/
+		}
 		break;
 	case WM_PAINT:
 
@@ -561,12 +645,17 @@ The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kon
 		SelectObject(hDc, hfont);
 		SetBkMode(hDc, TRANSPARENT);
 		
+		
+
 		DeleteObject(hfont);
 		EndPaint(hWnd, &ps);
+
+
 		break;
 
 	case WM_CREATE:
 		SetControls(hWnd);
+
 		break;
 	case WM_CLOSE:
 		DestroyWindow(hWnd);
@@ -624,24 +713,6 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 }
 
 
-
-
-void MainMenu(HWND hWnd)
-{
-	hMenu = CreateMenu();
-	HMENU hFileMenu = CreateMenu();
-	HMENU hAboutMenu = CreateMenu();
-	//Menu File:	
-	AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, L"Menu");
-	AppendMenuW(hFileMenu, MF_STRING, MENU_EXIT, L"Exit");
-
-	// Menu About:
-	AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hAboutMenu, L"About");
-	AppendMenuW(hAboutMenu, MF_STRING, MENU_ABOUT, L"Info");	
-
-	SetMenu(hWnd, hMenu);
-}
-
 // Create controls
 void SetControls(HWND hWnd)
 {
@@ -650,7 +721,7 @@ void SetControls(HWND hWnd)
 		hWnd, NULL, NULL, NULL);
 	hCode		 = CreateWindowW(L"Edit", L"", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_VSCROLL | WS_BORDER | ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL, 2*WND_BETWEEN + WND_OUTER,			   10, WND_INNER*2+WND_BETWEEN, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
 
-	hCodePresets = CreateWindowW(L"Static", L"", WS_CHILD | WS_VISIBLE | SS_GRAYRECT, 4*WND_BETWEEN + WND_OUTER + 2*WND_INNER, 10, WND_OUTER, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
+	hCodePresets = CreateWindowW(L"Edit", L"", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_VSCROLL | WS_BORDER | ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL, 4*WND_BETWEEN + WND_OUTER + 2*WND_INNER, 10, WND_OUTER+100, WND_FIELD_HEIGHT, hWnd, (HMENU)PRESETS_INFO, NULL, NULL);
 	
 	//SetWindowLongPtr((HWND)hComSettings, GWLP_WNDPROC | GWL_EXSTYLE, (LONG_PTR)BtnProc);
 
@@ -679,25 +750,25 @@ void SetControls(HWND hWnd)
 	EnableWindow((HWND)hCom9, FALSE);
 	EnableWindow((HWND)hCom10, FALSE);
 
-	hComStopResume = CreateWindowW(L"Button", L"Stop/Resume", WS_CHILD | WS_VISIBLE | SS_LEFT, 1 * WND_BETWEEN, 10 + WND_FIELD_HEIGHT + 20, WND_OUTER / 2 - 20, 30, hWnd, (HMENU)COM_STOPRESUME, NULL, NULL);
+	hComStopResume = CreateWindowW(L"Button", L"Pause/Resume", WS_CHILD | WS_VISIBLE | SS_LEFT, 1 * WND_BETWEEN, 10 + WND_FIELD_HEIGHT + 20, WND_OUTER / 2 - 20, 30, hWnd, (HMENU)COM_STOPRESUME, NULL, NULL);
 	hCodeClear = CreateWindowW(L"Button", L"Clear", WS_CHILD | WS_VISIBLE | SS_LEFT, 1 * WND_BETWEEN + WND_OUTER / 2 + 20, 10 + WND_FIELD_HEIGHT + 20, WND_OUTER / 2 - 20, 30, hWnd, (HMENU)CODE_CLEAR, NULL, NULL);
 
-	hSendEdit = CreateWindowW(L"Edit", L"C0066831400000DF", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_BORDER, 2 * WND_BETWEEN + WND_OUTER, 10 + WND_FIELD_HEIGHT + 20, (4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180)-(2 * WND_BETWEEN + WND_OUTER), 30, hWnd, NULL, NULL, NULL);
+	hSendEdit = CreateWindowW(L"Edit", NULL, WS_CHILD | WS_VISIBLE | SS_LEFT | WS_BORDER, 2 * WND_BETWEEN + WND_OUTER, 10 + WND_FIELD_HEIGHT + 20, (4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180)-(2 * WND_BETWEEN + WND_OUTER), 30, hWnd, NULL, NULL, NULL);
 	hSendButton = CreateWindowW(L"Button", L"Send command->", WS_CHILD | WS_VISIBLE | SS_LEFT, 4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180, 10 + WND_FIELD_HEIGHT + 20, 150, 30, hWnd, (HMENU)SEND_BUT, NULL, NULL);
 
 
-	CreateWindowW(L"Button", L"button1", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 100, 200,
-		50, hWnd, (HMENU)BUT_1, NULL, NULL);
-
-	CreateWindowW(L"button", L"button2", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 200, 200,
-		50, hWnd, (HMENU)BUT_2, NULL, NULL);
-
-	CreateWindowW(L"button", L"button3", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 300, 200,
-		50, hWnd, (HMENU)BUT_3, NULL, NULL);
-
-	//hEdit = CreateWindowW(L"Static", L"Edit control", WS_VISIBLE | WS_CHILD | SS_LEFT, 5, 5, 320, 520, hWnd, NULL, NULL, NULL);
+	CreateWindowW(L"Button", L"Load commands", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER + WND_OUTER/2 + 95, 10 + WND_FIELD_HEIGHT + 20, 150, 30, hWnd, (HMENU)BUT_LOAD, NULL, NULL);
+	hCheckSum = CreateWindowW(L"Button", L"Calculate check summ", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER, 10 + WND_FIELD_HEIGHT + 20, 170, 30, hWnd, (HMENU)BUT_CHECK, NULL, NULL);
 
 
+	//CreateWindowW(L"button", L"button3", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 300, 200,
+		//50, hWnd, (HMENU)BUT_3, NULL, NULL);
+
+
+	hComText = CreateWindowW(L"Static", L"CONNECTION INFO\r\n\r\nBaud rate: 9600\r\nByte size: 8\r\nStop bit: 1\r\nParity: even", WS_CHILD | WS_VISIBLE, 1 * WND_BETWEEN + 20, WND_FIELD_HEIGHT*3/4, WND_OUTER - 2*20, 100,
+		hWnd, NULL, NULL, NULL);
+	//hStatusText = CreateWindowW(L"Static", L"STATUS", WS_CHILD | WS_VISIBLE, 1 * WND_BETWEEN + 20, WND_FIELD_HEIGHT * 2 / 4, WND_OUTER - 2 * 20, 100,
+		//hWnd, NULL, NULL, NULL);
 
 
 }

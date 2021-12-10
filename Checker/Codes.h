@@ -2,9 +2,6 @@
 #include <Windows.h>
 #include <string>
 
-#define MID 0x0C
-#define CD	0x68
-
 const char* IBUSDevices[] = {
     "Broadcast",
     "0x01",
@@ -300,8 +297,8 @@ const char* IBUSMessages[] = {
     "0x20",
     "Radio Short cuts",
     "Text display confirmation",
-    "Display Text",
-    "Update ANZV",
+    "Display Text from start",
+    "Update Text",
     "0x25",
     "0x26",
     "0x27",
@@ -522,31 +519,3 @@ const char* IBUSMessages[] = {
     "0xFE",
     "0xFF"
 };
-
-
-//DWORD MID_CHECK_RAD[8] = { 0xC0, 0x03, 0x68, 0x01, 0x42 }; //00
-//DWORD MID_CHECK_IKE[8] = { 0xC0, 0x03, 0x80, 0x01, 0x42 }; //01
-//DWORD MID_CHECK_TEL[8] = { 0xC0, 0x03, 0xC8, 0x01, 0x42 }; //02
-//DWORD MID_CHECK_DSP[8] = { 0xC0, 0x03, 0x6A, 0x01, 0x42 }; //03
-//
-//DWORD COMMAND_5[4][5] = {
-//	{0xC0, 0x03, 0x68, 0x01, 0x42 }, //00 MID check RAD
-//	{0xC0, 0x03, 0x80, 0x01, 0x42 }, //01 MID check IKE
-//	{0xC0, 0x03, 0xC8, 0x01, 0x42 }, //02 MID check TEL
-//	{0xC0, 0x03, 0x6A, 0x01, 0x42 }  //03 MID check DSP
-//};
-//
-//DWORD COMMAND_6[][6] = {
-//	{0x68, 0x04, 0xC0, 0x02, 0x00, 0xAE }, //00 RAD ready to MID
-//	{0xC0, 0x04, 0x68, 0x22, 0x00, 0x8E }, //01 MID to RAD
-//};
-
-
-
-//std::string codesInfo[] = {
-//	"MID check RADIO",
-//	"MID check IKE",
-//	"MID check TEL",
-//	"MID check DSP"
-//}
-
