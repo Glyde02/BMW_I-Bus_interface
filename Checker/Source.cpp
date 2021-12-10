@@ -1,4 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS
+//#include <Codes.h>
 #include <windows.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,9 @@
 
 #include <iostream>
 #include <strsafe.h>
+#include "Codes.h"
+
+
 
 
 
@@ -25,6 +29,8 @@ using namespace std;
 #define WND_FIELD_HEIGHT 700
 
 #define COM_SETTINGS 18
+#define COM_STOPRESUME 60
+
 #define SCAN_COM 19
 #define COM1  20
 #define COM2  21
@@ -39,6 +45,9 @@ using namespace std;
 #define CONNECT_COM 30
 
 #define SEND_EDIT 50
+#define SEND_BUT 51
+#define CODE_CLEAR 52
+
 
 
 
@@ -70,6 +79,9 @@ HANDLE hCodeInfo;
 HANDLE hCodePresets;
 
 HANDLE hComPorts;
+HANDLE hComStopResume;
+bool isStop = FALSE;
+HANDLE hCodeClear;
 
 HANDLE hCom1, hCom2, hCom3, hCom4, hCom5, hCom6, hCom7, hCom8, hCom9, hCom10;
 BOOL ports[11] = { false };
@@ -83,7 +95,13 @@ DWORD dwSize;
 DWORD dwBytesWritten;
 BOOL iRet;
 DWORD Data[512];
-char dataChar[255];
+char dataChar[2000];
+int numOfLine = 0;
+char bufwr[255];
+char command[8];
+
+int mailLength = 0;
+char mail[255];
 HWND hEdit;
 
 DWORD from;
@@ -96,14 +114,8 @@ DWORD chkSumm;
 LPCTSTR sPortName = L"COM7";
 
 
-//Не нужно---------------------------
-OPENFILENAME ofn;       // структура станд. блока диалога
-char szFile[260];       // буфер для имени файла
-//-----------------------------------
-
 
 void SetControls(HWND);
-void MainMenu(HWND hWnd);
 
 
 
@@ -123,12 +135,66 @@ void ConnectRequest()
 
 void StrToHex()
 {
-	
+
 }
 
 char* unsigned_to_hex_string(unsigned x, char* dest, size_t size) {
 	snprintf(dest, size, "%X", x);
 	return dest;
+}
+
+void PrintCode()
+{
+	
+
+	char CodesInfo[255] = { 0 };
+	strcat(CodesInfo, IBUSDevices[Data[0]]);
+	strcat(CodesInfo, " to ");
+	strcat(CodesInfo, IBUSDevices[Data[2]]);
+	strcat(CodesInfo, "; ");
+	strcat(CodesInfo, IBUSMessages[Data[3]]);
+	strcat(CodesInfo, "\r\n");
+	strcat(CodesInfo, "\r\n");
+	strcat(CodesInfo, "---------------------------------------------------");
+	strcat(CodesInfo, "\r\n");
+
+
+	numOfLine += 7;
+
+	strcat(dataChar, CodesInfo);
+
+	//SetWindowTextA((HWND)hCode, dataChar);
+
+	int index = GetWindowTextLength((HWND)hCode);
+	SetFocus((HWND)hCode); // set focus
+	SendMessageA((HWND)hCode, EM_SETSEL, (WPARAM)index, (LPARAM)index); // set selection - end of text
+	SendMessageA((HWND)hCode, EM_REPLACESEL, 0, (LPARAM)dataChar); // append!
+
+	*dataChar = '\0';
+
+	//SendMessageA((HWND)hCode, EM_SETSEL, 0, -1); //Select all. 
+	//SendMessageA((HWND)hCode, EM_SETSEL, -1, -1);//Unselect and stay at the end pos
+	//SendMessageA((HWND)hCode, EM_SCROLLCARET, 0, 0); //Set scrollcaret to the current Pos
+	//SendMessage((HWND)hCode, EM_LINESCROLL, 0, numOfLine);
+	
+}
+
+void WriteCOM()
+{
+	DWORD temp, signal; //temp - переменная-заглушка
+	OVERLAPPED sync = { 0 };
+	bool fl = false;
+
+	sync.hEvent = CreateEvent(NULL, true, true, NULL); //создать событие
+	WriteFile(hSerial, mail, mailLength, &temp, &sync); //записать байты в порт (перекрываемая
+	int j = GetLastError();
+	signal = WaitForSingleObject(sync.hEvent, INFINITE); //приостановить поток, пока не завершится
+
+		if ((signal == WAIT_OBJECT_0) && (GetOverlappedResult(hSerial, &sync, &temp, true))) fl = true; //если
+		else fl = false;
+
+	
+	CloseHandle(sync.hEvent); //перед выходом из потока закрыть объект-событие
 }
 
 DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
@@ -154,8 +220,8 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 			/* Данные получены */
 			if (wait == WAIT_OBJECT_0) {
 				/* Начинаем чтение данных */
+				
 				char dst[255] = { 0 };
-
 
 				
 				ReadFile(hSerial, &Data[0], 1, &read, &sync);
@@ -164,11 +230,13 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 				{
 					ReadFile(hSerial, &Data[i+2], 1, &read, &sync);
 				}
+				
+				
 				int len = Data[1] + 2;
 
 				char oneByte[1] = { 0 };
 				for (int i = 0; i < len; i++)
-				{					
+				{
 					unsigned_to_hex_string(Data[i], oneByte, (sizeof(unsigned) * CHAR_BIT + 3) / 4 + 1);
 					if (oneByte[1] == '\0')
 					{
@@ -182,8 +250,10 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 					}
 
 				}
-				dst[len * 2 ] = '\r';
+				dst[len * 2] = '\r';
 				dst[len * 2 + 1] = '\n';
+
+				strcat(dataChar, dst);
 
 
 				//sprintf(dst, "%d", Data);
@@ -194,17 +264,16 @@ DWORD WINAPI ReadCOM(CONST LPVOID lpParam)
 				//StrToHex();
 
 				//str = string(dst, sizeof(dst));
-				strcat(dataChar, dst);
+				
 				//strcat(dataChar, " ");
-				SetWindowTextA((HWND)hCode, dataChar);
+				PrintCode();
+				
 
 				if (strlen(dataChar) > 30000)
 				{
 					*dataChar = '\0';
 				}
 				
-
-
 
 				//MessageBoxA(NULL, &dst, NULL, NULL);
 				/* Ждем завершения операции чтения */
@@ -282,7 +351,7 @@ void GetActivePorts()
 
 void Connecting()
 {
-	hSerial = CreateFileW(sPortName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, 0);
+	hSerial = CreateFileW(sPortName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
 	if (hSerial == INVALID_HANDLE_VALUE)
 	{
 		if (GetLastError() == ERROR_FILE_NOT_FOUND)
@@ -304,6 +373,7 @@ void Connecting()
 	dcbSerialParams.ByteSize = 8;
 	dcbSerialParams.StopBits = ONESTOPBIT;
 	dcbSerialParams.Parity = EVENPARITY;
+	dcbSerialParams.fNull = FALSE;
 
 	if (!SetCommState(hSerial, &dcbSerialParams))
 	{
@@ -396,7 +466,75 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			Connecting();
 			threadReadingCom = CreateThread(NULL, 0, ReadCOM, NULL, 0, NULL);
 			break;
+		
+		case COM_STOPRESUME:
+			if (!isStop)
+			{
+				SuspendThread(threadReadingCom);
+			}
+			else
+			{
+				ResumeThread(threadReadingCom);
+			}
+			isStop = !isStop;
+			break;
+		case CODE_CLEAR:
+			SetWindowText((HWND)hCode, L"");
+			break;
+		case SEND_BUT:
+		{
+			//get Mail
+			int len = SendMessage((HWND)hSendEdit, WM_GETTEXTLENGTH, 0, 0);
+			mailLength = len / 2;
+			char* buffer = new char[len*2];
+			SendMessage((HWND)hSendEdit, WM_GETTEXT, len*2, (LPARAM)buffer);
 
+			char bufferHex[255] = { 0 };
+
+			int currPos = 0;
+			for (int i = 0; i < len ; i++)
+			{
+				if (*(buffer + i * 2) != ' ') {
+					bufferHex[currPos] = *(buffer + i * 2);
+					currPos++;
+				}
+					
+			}
+
+			mailLength = currPos / 2;
+
+			for (int i = 0; i < mailLength ; i++)
+			{
+				char strByte[2];
+				strByte[0] = bufferHex[i*2];
+
+
+				strByte[1] = bufferHex[i*2+1];
+
+
+				int g = (int)strtol(strByte, NULL, 16);
+
+				mail[i] = char(g);
+				
+			}
+
+			BYTE chkSum = 0x00;
+			for (int i = 0; i < mailLength ; i++)
+			{
+				chkSum = chkSum ^ mail[i];
+			}
+			mailLength++;
+			mail[mailLength-1] = char(chkSum);
+
+
+			SuspendThread(threadReadingCom);
+
+			PurgeComm(hSerial, PURGE_TXCLEAR);
+			WriteCOM();
+
+			ResumeThread(threadReadingCom);
+		}
+			break; 
 
 
 		case MENU_EXIT:
@@ -410,141 +548,11 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			MessageBoxW(NULL, L"   The program provides features for communicate with i-bus protocol in BMW e38, e39, e53.\n\
 The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kondratskiy Anton.", L"Info", MB_OK);
 			break;
-		case BUT_1:
-		{
-			hSerial = CreateFile(sPortName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, 0);
-			if (hSerial == INVALID_HANDLE_VALUE)
-			{
-				if (GetLastError() == ERROR_FILE_NOT_FOUND)
-				{
-					MessageBox(NULL, L"no", NULL, NULL);
-					//cout << "serial port does not exist.\n";
-				}
-				MessageBox(NULL, L"no2", NULL, NULL);
-
-				//cout << "some other error occurred.\n";
-			}
-
-			//dcbSerialParams = { 0 };
-			dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-			if (!GetCommState(hSerial, &dcbSerialParams))
-			{
-				cout << "getting state error\n";
-			}
-			dcbSerialParams.BaudRate = CBR_9600;
-			dcbSerialParams.ByteSize = 8;
-			dcbSerialParams.StopBits = ONESTOPBIT;
-			dcbSerialParams.Parity = EVENPARITY;
-
-			if (!SetCommState(hSerial, &dcbSerialParams))
-			{
-				cout << "error setting serial port state\n";
-			}
-
-			COMMTIMEOUTS serialTimeouts;
-			serialTimeouts.ReadIntervalTimeout = 1;
-			serialTimeouts.ReadTotalTimeoutConstant = 1;
-			serialTimeouts.ReadTotalTimeoutMultiplier = 1;
-			serialTimeouts.WriteTotalTimeoutConstant = 1;
-			serialTimeouts.WriteTotalTimeoutMultiplier = 1;
-
-			if (!SetCommTimeouts(hSerial, &serialTimeouts))
-			{
-				cout << "error Set timeouts\n";
-			}
-
-			//SerialRead();
-
-			char data[] = "I-Bus";
-			dwSize = sizeof(data);
-			dwBytesWritten;
-
-			//iRet = WriteFile(hSerial, data, dwSize, &dwBytesWritten, NULL);
-
-			//ReadCOM();
-
-			/*string str = ReadCOM();
-			wstring wstr;
-			StringToWString(wstr, str);
-
-			hDc = GetDC(hWnd);
-
-			TextOutW(hDc, 50, 20, wstr.c_str(), 25);
-			TextOut(hDc, 300, 20, L"BLUR", 4);*/
-
-			break; }
-
-		case BUT_2:
-		{
-			//DCB dcbSerialParams = { 0 };
-			/*dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-			if (!GetCommState(hSerial, &dcbSerialParams))
-			{
-				cout << "getting state error\n";
-			}
-			dcbSerialParams.BaudRate = CBR_9600;
-			dcbSerialParams.ByteSize = 8;
-			dcbSerialParams.StopBits = ONESTOPBIT;
-			dcbSerialParams.Parity = EVENPARITY;*/
-
-			/*if (!SetCommState(hSerial, &dcbSerialParams))
-			{
-				cout << "error setting serial port state\n";
-			}*/
-
-			//char data2[] = "I-Bus";
-			//dwSize = sizeof(data2);
-			//dwBytesWritten;
-
-			//iRet = WriteFile(hSerial, data2, dwSize, &dwBytesWritten, NULL);
-
-			GetActivePorts();
-
-			//ReadCOM();
-
-			break; 
-		}
-		case BUT_3:
-		{
-			//DCB dcbSerialParams = { 0 };
-			/*dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-			if (!GetCommState(hSerial, &dcbSerialParams))
-			{
-				cout << "getting state error\n";
-			}
-			dcbSerialParams.BaudRate = CBR_9600;
-			dcbSerialParams.ByteSize = 8;
-			dcbSerialParams.StopBits = ONESTOPBIT;
-			dcbSerialParams.Parity = EVENPARITY;*/
-
-			/*if (!SetCommState(hSerial, &dcbSerialParams))
-			{
-				cout << "error setting serial port state\n";
-			}*/
-
-			
-
-			//ReadCOM();
-
-			//char data2[] = "I-Bus";
-			//dwSize = sizeof(data2);
-			//dwBytesWritten;
-
-			//iRet = WriteFile(hSerial, data2, dwSize, &dwBytesWritten, NULL);
-
-			//ReadCOM();
-
-			break;
-		}
-
 		}	
 
 
 		break;
 	case WM_PAINT:
-
-
-
 
 		BeginPaint(hWnd, &ps);
 		hDc = GetDC(hWnd);
@@ -558,7 +566,6 @@ The program was developed by a third-year student of POIT BSUIR.\t\t\t\t\t\t Kon
 		break;
 
 	case WM_CREATE:
-		MainMenu(hWnd);
 		SetControls(hWnd);
 		break;
 	case WM_CLOSE:
@@ -606,21 +613,6 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE,
 		0, 0, WND_HEIGHT, WND_WIDTH, 0, 0, hInstance, NULL);
 
-	// Инициализация структуры OPENFILENAME
-	ZeroMemory(&ofn, sizeof(OPENFILENAME));
-	ofn.lStructSize = sizeof(OPENFILENAME);
-	ofn.hwndOwner = hWnd;
-	ofn.lpstrFile = (LPWSTR)szFile;
-	ofn.nMaxFile = sizeof(szFile);
-	//ofn.lpstrFilter = (LPWSTR)L"All images type\0*.bmp;*.dib;*.jpg;*.jpeg;*.jpe;*.jp2;*.png;*.tif;*.tiff\0\0";
-	ofn.nFilterIndex = 1;
-	ofn.lpstrFileTitle = NULL;
-	ofn.nMaxFileTitle = 0;
-	ofn.lpstrInitialDir = NULL;
-	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-
-
-
 
 	while (GetMessage(&msg, 0, 0, 0))
 	{
@@ -631,35 +623,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine,
 	return 0;
 }
 
-//Вывод диалогового окна для сохранения файла
-bool ShowSaveDialog(HWND hWndOwner, char* fileName, char* title, char* initialDir, char* filter)
-{
-	OPENFILENAME ofn;
-	ZeroMemory(&ofn, sizeof(OPENFILENAME));
 
-	char szFile[MAX_PATH];
-	ZeroMemory(szFile, MAX_PATH);
-
-	// Инициализируем OPENFILENAME
-	ofn.lStructSize = sizeof(OPENFILENAME);
-	ofn.hwndOwner = hWndOwner;
-	ofn.lpstrFile = (LPWSTR)szFile;
-	ofn.nMaxFile = MAX_PATH;
-	ofn.lpstrFilter = (LPCWSTR)filter;
-	ofn.nFilterIndex = 0;
-	ofn.lpstrTitle = (LPCWSTR)title;
-	ofn.lpstrInitialDir = (LPCWSTR)initialDir;
-	ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
-
-
-	if (GetSaveFileName(&ofn))
-	{
-		//strcpy(fileName, (LPWSTR)ofn.lpstrFile);
-		lstrcpyW((LPWSTR)fileName, ofn.lpstrFile);
-		return 1;
-	}
-	return 0;
-}
 
 
 void MainMenu(HWND hWnd)
@@ -669,17 +633,11 @@ void MainMenu(HWND hWnd)
 	HMENU hAboutMenu = CreateMenu();
 	//Menu File:	
 	AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, L"Menu");
-	AppendMenuW(hFileMenu, MF_STRING, UP_MENU_SCAN, L"Open...");
-	AppendMenuW(hFileMenu, MF_STRING, UP_MENU_SAVE, L"Save...");
-	AppendMenuW(hFileMenu, MF_SEPARATOR, (UINT_PTR)NULL, NULL);
 	AppendMenuW(hFileMenu, MF_STRING, MENU_EXIT, L"Exit");
 
 	// Menu About:
 	AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hAboutMenu, L"About");
-	AppendMenuW(hAboutMenu, MF_STRING, MENU_ABOUT, L"Info");
-
-
-	
+	AppendMenuW(hAboutMenu, MF_STRING, MENU_ABOUT, L"Info");	
 
 	SetMenu(hWnd, hMenu);
 }
@@ -687,30 +645,11 @@ void MainMenu(HWND hWnd)
 // Create controls
 void SetControls(HWND hWnd)
 {
-	/*WNDCLASSEX wcex;
-	memset(&wcex, 0, sizeof(WNDCLASSEX));
-
-	wcex.cbSize = sizeof(WNDCLASSEX);
-	wcex.style = 0;
-	wcex.lpfnWndProc = WindowProcedure_Settings;
-	wcex.cbClsExtra = 0;
-	wcex.cbWndExtra = 0;
-	wcex.hIcon = 0;
-	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	wcex.lpszMenuName = NULL;
-	wcex.lpszClassName = L"Settings";
-	wcex.hIconSm = 0;
-
-	RegisterClassEx(&wcex);
-	hComSettings = CreateWindowExW(0, L"WindowProcedure_Settings", L"I-Bus Checker",
-		WS_VISIBLE,
-		1 * WND_BETWEEN, 10, WND_OUTER, WND_FIELD_HEIGHT, 0, 0, NULL, NULL);*/
-
 
 	hComSettings = CreateWindowW(L"Static", L"", WS_CHILD | WS_VISIBLE | SS_GRAYRECT, 1*WND_BETWEEN,						   10, WND_OUTER, WND_FIELD_HEIGHT, 
 		hWnd, NULL, NULL, NULL);
-	hCode		 = CreateWindowW(L"Edit", L"", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_VSCROLL | WS_BORDER | ES_READONLY | EM_SETWORDBREAKPROC, 2*WND_BETWEEN + WND_OUTER,			   10, WND_INNER, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
-	hCodeInfo	 = CreateWindowW(L"Static", L"", WS_CHILD | WS_VISIBLE | SS_GRAYFRAME, 3*WND_BETWEEN + WND_OUTER + WND_INNER,   10, WND_INNER, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
+	hCode		 = CreateWindowW(L"Edit", L"", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_VSCROLL | WS_BORDER | ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL, 2*WND_BETWEEN + WND_OUTER,			   10, WND_INNER*2+WND_BETWEEN, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
+
 	hCodePresets = CreateWindowW(L"Static", L"", WS_CHILD | WS_VISIBLE | SS_GRAYRECT, 4*WND_BETWEEN + WND_OUTER + 2*WND_INNER, 10, WND_OUTER, WND_FIELD_HEIGHT, hWnd, NULL, NULL, NULL);
 	
 	//SetWindowLongPtr((HWND)hComSettings, GWLP_WNDPROC | GWL_EXSTYLE, (LONG_PTR)BtnProc);
@@ -740,8 +679,11 @@ void SetControls(HWND hWnd)
 	EnableWindow((HWND)hCom9, FALSE);
 	EnableWindow((HWND)hCom10, FALSE);
 
-	hSendEdit = CreateWindowW(L"Edit", L"EditControl", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_BORDER, 2 * WND_BETWEEN + WND_OUTER, 10 + WND_FIELD_HEIGHT + 20, (4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180)-(2 * WND_BETWEEN + WND_OUTER), 30, hWnd, NULL, NULL, NULL);
-	hSendButton = CreateWindowW(L"Button", L"Send command->", WS_CHILD | WS_VISIBLE | SS_LEFT, 4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180, 10 + WND_FIELD_HEIGHT + 20, 150, 30, hWnd, NULL, NULL, NULL);
+	hComStopResume = CreateWindowW(L"Button", L"Stop/Resume", WS_CHILD | WS_VISIBLE | SS_LEFT, 1 * WND_BETWEEN, 10 + WND_FIELD_HEIGHT + 20, WND_OUTER / 2 - 20, 30, hWnd, (HMENU)COM_STOPRESUME, NULL, NULL);
+	hCodeClear = CreateWindowW(L"Button", L"Clear", WS_CHILD | WS_VISIBLE | SS_LEFT, 1 * WND_BETWEEN + WND_OUTER / 2 + 20, 10 + WND_FIELD_HEIGHT + 20, WND_OUTER / 2 - 20, 30, hWnd, (HMENU)CODE_CLEAR, NULL, NULL);
+
+	hSendEdit = CreateWindowW(L"Edit", L"C0066831400000DF", WS_CHILD | WS_VISIBLE | SS_LEFT | WS_BORDER, 2 * WND_BETWEEN + WND_OUTER, 10 + WND_FIELD_HEIGHT + 20, (4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180)-(2 * WND_BETWEEN + WND_OUTER), 30, hWnd, NULL, NULL, NULL);
+	hSendButton = CreateWindowW(L"Button", L"Send command->", WS_CHILD | WS_VISIBLE | SS_LEFT, 4 * WND_BETWEEN + WND_OUTER + 2 * WND_INNER - 180, 10 + WND_FIELD_HEIGHT + 20, 150, 30, hWnd, (HMENU)SEND_BUT, NULL, NULL);
 
 
 	CreateWindowW(L"Button", L"button1", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 300, 100, 200,
