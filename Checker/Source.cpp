@@ -51,10 +51,6 @@ using namespace std;
 #define BUT_CHECK 1001
 #define BUT_3 1002
 
-
-
-
-
 #define MENU_EXIT 31 
 #define UP_MENU_SCAN 32
 #define UP_MENU_SAVE 33
@@ -111,29 +107,7 @@ LPCTSTR sPortName = L"COM7";
 char szFile[260]; //file name
 
 
-
 void SetControls(HWND);
-
-
-
-void ConnectRequest()
-{
-
-}
-
-//void SerialRead()
-//{
-//	unsigned long BytesIterated = 0;
-//
-//	if (ReadFile(hSerial, Buffer, 5, &BytesIterated, NULL)) {
-//		//SetWindowTextA(hEdit, Buffer);
-//	}
-//}
-
-void StrToHex()
-{
-
-}
 
 char* unsigned_to_hex_string(unsigned x, char* dest, size_t size) {
 	snprintf(dest, size, "%X", x);
@@ -333,47 +307,47 @@ int StringToWString(std::wstring& ws, const std::string& s)
 	return 0;
 }
 
-void ShowOpenDialog(HWND hWnd)
-{
-	OPENFILENAME ofn;
-
-	// Инициализируем OPENFILENAME
-	ZeroMemory(&ofn, sizeof(OPENFILENAME));
-	ofn.lStructSize = sizeof(OPENFILENAME);
-	ofn.hwndOwner = hWnd;
-	ofn.lpstrFile = (LPWSTR)szFile;
-	ofn.nMaxFile = sizeof(szFile);
-	ofn.lpstrFilter = (LPWSTR)L"Text file (*.txt)\0*.txt\0\0";
-	ofn.nFilterIndex = 1;
-	ofn.lpstrFileTitle = NULL;
-	ofn.nMaxFileTitle = 0;
-	ofn.lpstrInitialDir = NULL;
-	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-
-	if (GetOpenFileName(&ofn) == TRUE)
-	{
-
-		DWORD dwSize = 0;
-		char text[1000] = { 0 };
-		OVERLAPPED sync = { 0 };
-		unsigned long read = 0;
-
-
-
-		HANDLE hFile = CreateFile(ofn.lpstrFile, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hFile != INVALID_HANDLE_VALUE)
-		{
-			ReadFile(hFile, text, 999, &read, &sync);
-		}
-		CloseHandle(hFile);
-
-		wchar_t filename[4096] = { 0 };
-		MultiByteToWideChar(0, 0, text, strlen(text), filename, strlen(text));
-
-		SetWindowText((HWND)hCodePresets, filename);
-	}
-
-}
+//void ShowOpenDialog(HWND hWnd)
+//{
+//	OPENFILENAME ofn;
+//
+//	// Инициализируем OPENFILENAME
+//	ZeroMemory(&ofn, sizeof(OPENFILENAME));
+//	ofn.lStructSize = sizeof(OPENFILENAME);
+//	ofn.hwndOwner = hWnd;
+//	ofn.lpstrFile = (LPWSTR)szFile;
+//	ofn.nMaxFile = sizeof(szFile);
+//	ofn.lpstrFilter = (LPWSTR)L"Text file (*.txt)\0*.txt\0\0";
+//	ofn.nFilterIndex = 1;
+//	ofn.lpstrFileTitle = NULL;
+//	ofn.nMaxFileTitle = 0;
+//	ofn.lpstrInitialDir = NULL;
+//	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+//
+//	if (GetOpenFileName(&ofn) == TRUE)
+//	{
+//
+//		DWORD dwSize = 0;
+//		char text[1000] = { 0 };
+//		OVERLAPPED sync = { 0 };
+//		unsigned long read = 0;
+//
+//
+//
+//		HANDLE hFile = CreateFile(ofn.lpstrFile, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+//		if (hFile != INVALID_HANDLE_VALUE)
+//		{
+//			ReadFile(hFile, text, 999, &read, &sync);
+//		}
+//		CloseHandle(hFile);
+//
+//		wchar_t filename[4096] = { 0 };
+//		MultiByteToWideChar(0, 0, text, strlen(text), filename, strlen(text));
+//
+//		SetWindowText((HWND)hCodePresets, filename);
+//	}
+//
+//}
 
 void GetActivePorts()
 {
@@ -464,10 +438,6 @@ void Connecting()
 	serialTimeouts.ReadIntervalTimeout = 0xFFFFFFFF;
 	serialTimeouts.ReadTotalTimeoutConstant = 0;
 	serialTimeouts.ReadTotalTimeoutMultiplier = 0;
-
-	/*serialTimeouts.ReadIntervalTimeout = 5000;
-	serialTimeouts.ReadTotalTimeoutConstant = 5000;
-	serialTimeouts.ReadTotalTimeoutMultiplier = 1000;*/
 	serialTimeouts.WriteTotalTimeoutConstant = 5000;
 	serialTimeouts.WriteTotalTimeoutMultiplier = 1000;
 
@@ -643,9 +613,7 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 		hfont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, RUSSIAN_CHARSET, OUT_OUTLINE_PRECIS,
 			CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH, TEXT("Times New Roman"));
 		SelectObject(hDc, hfont);
-		SetBkMode(hDc, TRANSPARENT);
-		
-		
+		SetBkMode(hDc, TRANSPARENT);	
 
 		DeleteObject(hfont);
 		EndPaint(hWnd, &ps);
@@ -659,13 +627,7 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 		break;
 	case WM_CLOSE:
 		DestroyWindow(hWnd);
-
-		//MessageBeep(MB_OK);
-		/*if (MessageBoxW(hWnd, L"Are you sure?", L"Exit", MB_YESNO) == IDYES)
-		{
-			DestroyWindow(hWnd);
-		}
-		*/break;
+		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return DefWindowProcW(hWnd, uMsg, wParam, lParam);
