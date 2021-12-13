@@ -7,11 +7,11 @@ ____
 - :white_check_mark: read and analyze the I-BUS data bus
 - :white_check_mark: attempt to write to the I-BUS
 - :white_check_mark: create a circuit board to communicate with the data bus
-- :black_square_button: change the connection scheme in order to increase stability
-- :black_square_button: create a WinAPI application, read data from a virtual COM port
-- :black_square_button: add functions to receive data from the car
-- :black_square_button: add functions to send data to the car
-- :black_square_button: add technical documentation to the application about the interconnected nodes of the car
+- :negative_squared_cross_mark: change the connection scheme in order to increase stability
+- :white_check_mark: create a WinAPI application, read data from a virtual COM port
+- :white_check_mark: add functions to receive data from the car
+- :white_check_mark: add functions to send data to the car
+- :white_check_mark: add technical documentation to the application about the interconnected nodes of the car
 ____
 
 ### Сonnection of nodes in **BMW** E-series
@@ -35,6 +35,25 @@ The components of the printed circuit board are shown in the picture.
 ![Circuit](https://i.ibb.co/SVHnbNq/f44028328238.png "Curcuit")
 
 For correct operation, a circuit based on the TH3122.4 chip will be assembled.
+____
+
+# TH3122.4
+For stable communication with the data bus, a printed circuit board was assembled. However, the test failed. The chip is heated and has a very high current consumption.
+____
+
+# WINApi application
+
+The application is written in pure winapi. To communicate with the serial port, ReadFile and WriteFile asynchronous functions are used. In addition to these functions, you need to open the port (CreateFile) and set its parameters (DCB structure).
+
+To work with data, you need to set the following COM port parameters:
+- Baud rate: 9600;
+- Byte size: 8;
+- Stop bits: 1;
+- Parity: even.
+
+In addition, you must set the parameter .fNull to FALSe. It is necessary in order to be able to send 0x00 bytes.
+
+![Program](https://i.ibb.co/mcPJFPr/123.png "Program")
 ____
 
 # To be continued.
